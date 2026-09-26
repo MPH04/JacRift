@@ -21,8 +21,8 @@ const mono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "VectorRift",
-  description: "Coverage-guided fuzzing and behavioral investigation for local, authorized targets.",
+  title: "JacRift campaign fixture",
+  description: "Synthetic riftpacket campaign board. The repository analysis app is jac start.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

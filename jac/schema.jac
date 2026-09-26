@@ -15,7 +15,7 @@ def as_int(value: any, lo: int, hi: int) -> int | None {
     if value < lo or value > hi {
         return None;
     }
-    return value;
+    return value as int;
 }
 
 def parse_execution(line: str) -> dict {
@@ -30,7 +30,10 @@ def parse_execution(line: str) -> dict {
     if type(raw) is not dict {
         return schema_error("not_object");
     }
-    if raw.get("schema") != "vectorrift.execution.v1" {
+    # vectorrift.execution.v1 remains the stored schema. jacrift.execution.v1 is accepted
+    # by the compatibility loader and normalized to the legacy name.
+    schema_name = raw.get("schema");
+    if schema_name != "vectorrift.execution.v1" and schema_name != "jacrift.execution.v1" {
         return schema_error("schema");
     }
     exit_type = raw.get("exit_type");
@@ -39,7 +42,7 @@ def parse_execution(line: str) -> dict {
         return schema_error("exit_type");
     }
     events = raw.get("events");
-    if type(events) is not list or len(events) > 64 {
+    if type(events) is not list or len(events as list) > 64 {
         return schema_error("events");
     }
     clean_events = [];
@@ -116,4 +119,7 @@ test "schema rejects garbage and keeps a real shape" {
     injected = parse_execution(sample.replace("magic", "../x<script>"));
     assert injected["ok"] == True;
     assert "<" not in injected["event"]["events"][0]["a"];
+    renamed = parse_execution(sample.replace("vectorrift.execution.v1", "jacrift.execution.v1"));
+    assert renamed["ok"] == True;
+    assert renamed["event"]["schema"] == "vectorrift.execution.v1";
 }
