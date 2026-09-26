@@ -1,6 +1,41 @@
 # Demo
 
-The live story is a local campaign against `riftpacket`, then the board.
+## Repository analysis
+
+This is the product path.
+
+```bash
+pip install --user -r requirements.txt
+export PATH="$HOME/.local/bin:$PATH"
+jac install
+jac start main.jac --port 8000
+```
+
+Open `http://127.0.0.1:8000/`. Leave the repository field as `fixture://safe-buggy`. Check the authorization box. Choose **Analyze Repository**.
+
+The fixture is labeled TEST / DEMONSTRATION FIXTURES. It is a small Jac tree with deliberate defects, not an external service.
+
+Watch the stage list move through static analysis, tests, runtime, reproduction, and investigation. Open a finding. The state-invariant finding names `checkout/order_graph.jac`, says the completion state is reachable before verification, and shows a minimized JSON input. Replay runs that stored command in the sandbox. The graph lists the evidence, hypothesis, and counter-evidence nodes. The report states what was not shown, including that this is not a remote-code-execution claim.
+
+The same job from the API:
+
+```bash
+curl -sS -X POST http://127.0.0.1:8000/api/jobs \
+  -H 'Content-Type: application/json' \
+  -d '{"repository_url":"fixture://safe-buggy","authorization_confirmed":true,"scope":"repository_only"}'
+```
+
+Poll `GET /api/jobs/JR-…` until `status` is `COMPLETE` or `FAILED`.
+
+Without the server:
+
+```bash
+python3 -m jrlib.cli --repository fixture://safe-buggy
+```
+
+## Synthetic campaign fixture
+
+The rest of this page is the local riftpacket campaign, not the repository product.
 
 ## Prep
 

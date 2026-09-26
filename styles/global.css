@@ -1,0 +1,9 @@
+body {
+  margin: 0;
+  background: #f3efe4;
+  color: #1c1915;
+}
+
+button, input {
+  font: inherit;
+}

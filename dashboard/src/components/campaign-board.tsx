@@ -164,13 +164,14 @@ export function CampaignBoard() {
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-6 md:px-8">
       <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="font-mono text-xs tracking-[0.22em] text-[#5c564c]">LOCAL DEFENSIVE FUZZING</p>
+          <p className="font-mono text-xs tracking-[0.22em] text-[#5c564c]">TEST / DEMONSTRATION FIXTURE</p>
           <h1 className="font-[family-name:var(--font-fraunces)] text-4xl leading-none text-[#1c1915] md:text-5xl">
-            Vector<span className="text-[#0f6e6b]">rift</span>
+            Jac<span className="text-[#0f6e6b]">Rift</span>
           </h1>
           <p className="mt-2 max-w-xl text-sm text-[#3f3a33]">
-            Coverage tells you where the program went. Behavior tells you what it became. Claims stay inside the
-            evidence that was actually captured.
+            Synthetic riftpacket campaign. This board is not the repository analysis app. That app is{" "}
+            <span className="font-mono">jac start main.jac</span>. Coverage and behavior stay separate, and a claim
+            stays inside the evidence that was captured.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

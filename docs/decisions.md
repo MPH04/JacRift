@@ -42,6 +42,38 @@ Test: flock on `var/campaign.lock`, and the dashboard returns 409 when status is
 Revised: one campaign process.
 Remains: execs/sec is one core. The limitations line says so.
 
+## Repository jobs are not one global campaign
+
+Proposal: reuse `var/state.json` and `jac/campaign.jac` for every submitted repository.
+Attack: two analyses overwrite one graph and one lock, and a GitHub checkout would be executed by the fuzzer's host process.
+Test: `tests/test_pipeline.py` creates `var/jobs/JR-…` and deletes it. A second submission gets a different id.
+Revised: `jrlib` owns job directories. `jac/investigate.jac` runs with that directory as cwd so the graph database is per job.
+Remains: jobs are sequential tool runs, not a cluster scheduler.
+
+## Sandbox is a user namespace, not a container
+
+Proposal: run each repository in Docker.
+Attack: this JacHammer environment has no Docker or Podman, and mounting the engine socket would give the repository a path to the host.
+Test: `tests/test_sandbox.py` covers timeout, output cap, abort, process-count ceiling, hidden secret files, a scrubbed environment, and a container backend that fails closed.
+Revised: `unshare` user, pid, and mount namespaces. Network is off during execution and on only for clone. `ContainerSandboxBackend` refuses even if a runtime appears later.
+Remains: `RLIMIT_AS` is unset, and the namespace is not a separate kernel. Documented in the threat model.
+
+## `@restspec` paths are not the live router
+
+Proposal: decorate `server.jac` and serve `POST /api/jobs` from jaclang.
+Attack: jaclang 0.16 stores `restspec` and never reads it. The console then receives the SPA HTML or `{"error":"Not found"}` and cannot create a job.
+Test: `tests/test_http_facade.py` routes authorization failures, unknown jobs, and a handler wrapper. A live `jac start` returns `authorization_required` for a POST without the checkbox.
+Revised: `jrlib/http_facade.py` wraps the handler factory. `POST /function/api_*` remains.
+Remains: a future jaclang that dispatches `@restspec` would register those paths twice unless the wrapper checks the path first. The wrapper only claims `/api/jobs`.
+
+## Diagnostic commands count as minimal
+
+Proposal: require byte-level ddmin before any confirmed finding.
+Attack: a one-file `jac check` failure has no input bytes to delete. Leaving it at `OBSERVED` hides a repeated, located type error. Rewriting the source to "minimize" it can change the program into a different bug.
+Test: the safe-buggy fixture confirms `JAC_TYPE_ERROR` with `minimizer: diagnostic_command`, and the state-machine input still drops JSON keys.
+Revised: JSON keys are deleted when the failure signature holds. A single jac command is recorded as already one command. Limitations text says the source was not rewritten.
+Remains: a multi-request failure is not minimized request-by-request.
+
 ## libFuzzer stays a side binary
 
 Proposal: replace `vrfuzz` with libFuzzer.

@@ -1,140 +1,190 @@
-# VectorRift
+# JacRift
 
-VectorRift is a local defensive fuzzing workbench. It runs an instrumented target, keeps the inputs that move coverage or behavior, and refuses to call something a security finding until a replay, a minimized input, and a narrow sanitizer fact all agree.
+JacRift is a defensive investigation platform for authorized Jac repositories.
 
-The question it is built to answer is not “did a score cross a threshold?” It is: what behavior showed up, why that behavior is new, whether the same input does it again, what the program state did, and which claim the evidence actually supports.
+Detecting something abnormal is not the same as proving what happened. JacRift records the observation, tries to reproduce it, reduces the trigger when it can, and only then states what the evidence supports and what is still unknown.
 
-Authorized scope is this repository’s synthetic targets. VectorRift is not an offensive deployment tool. See [docs/threat-model.md](docs/threat-model.md).
+```text
+Repository
+        ↓
+Controlled observation
+        ↓
+Evidence
+        ↓
+Reproduction
+        ↓
+Minimization
+        ↓
+Investigation
+        ↓
+Hypothesis
+        ↓
+Counter-evidence
+        ↓
+Defensible finding
+```
 
-## What a campaign shows
+## What JacRift does
 
-One recorded run (`--execs 80 --seed 1`) is written up in [docs/experiments.md](docs/experiments.md). The dashboard reads `var/state.json` produced by that run. Numbers on the page come from the campaign file, not from constants in the UI.
+- Repository inspection inside a disposable sandbox
+- Jac static analysis (`jac check`)
+- Recognized tests (`jac test`)
+- Controlled runtime execution of safe entrypoints
+- Bounded mutation of identified application inputs
+- Replay and minimization
+- An investigation graph in Jac
+- Narrow hypotheses and a skeptic pass
+- A structured defensive finding and a written report
+
+## What JacRift does not claim
+
+- Guaranteed vulnerability detection
+- Automatic exploitation
+- Scanning repositories you do not own or have authorization to test
+- Automatic CVE generation
+- Automatic business-impact assessment
+- A replacement for human security review
+
+JacRift does not emit claims such as remote code execution, account takeover, or complete compromise. A broad claim of that kind is recorded as contradicted.
+
+## Product flow
+
+Open the app with `jac start` (see [JacHammer deployment](#jachammer-deployment)). Submit a repository and confirm authorization:
+
+```text
+https://github.com/OWNER/REPOSITORY
+```
+
+or the built-in demonstration fixture:
+
+```text
+fixture://safe-buggy
+```
+
+The checkbox must be checked. The request is:
+
+```json
+{
+  "repository_url": "fixture://safe-buggy",
+  "authorization_confirmed": true,
+  "scope": "repository_only"
+}
+```
+
+Rejected before any clone or copy: malformed URLs, unsupported schemes (`http`, `ssh`, `git@`, `file`), non-GitHub hosts, extra path segments, credentials in the URL, a missing authorization boolean, and any scope other than `repository_only`.
+
+Each submission is an independent job, `JR-` plus six hex characters, under `var/jobs/<id>/`:
+
+```text
+repository/  manifest.json  state.json  events.jsonl
+findings.json  report.md  graph.json  logs/  artifacts/  job.lock
+```
+
+Phases run from `QUEUED` through sandbox preparation, clone or copy, inspection, static analysis, tests, runtime, bounded mutation, reproduction, minimization, and triage. Terminal states are `COMPLETE`, `FAILED`, and `CANCELLED`. A tool failure is stored on the job. It does not take down the server.
 
 ## Architecture
 
+Python `jrlib` owns jobs, the sandbox, discovery, tool execution, and the HTTP table. Jac owns the evidence ladder and the investigation graph for a repository job. The older synthetic fuzzer remains a labeled fixture; it is not the product.
+
 ```text
-                    ┌─────────────────────┐
-                    │    Target Program   │
-                    └──────────┬──────────┘
-                               │
-                    ┌──────────▼──────────┐
-                    │ Instrumented Harness│
-                    │ LLVM / Sanitizers   │
-                    └──────────┬──────────┘
-                               │
-                    ┌──────────▼──────────┐
-                    │ Coverage Fuzzer     │
-                    └──────────┬──────────┘
-                               │
-                 execution + behavioral events
-                               │
-                    ┌──────────▼──────────┐
-                    │ VectorRift Jac Core │
-                    └──────────┬──────────┘
-                               │
-                    ┌──────────▼──────────┐
-                    │ Investigation Graph │
-                    └──────────┬──────────┘
-                               │
-             ┌─────────────────┼─────────────────┐
-             │                 │                 │
-      Reproduction        Skeptic Agent     Experiment Agent
-             │                 │                 │
-             └─────────────────┼─────────────────┘
-                               │
-                    ┌──────────▼──────────┐
-                    │ Dashboard / Report  │
-                    └─────────────────────┘
+jac start main.jac
+    ├── client UI          components/console.cl.jac
+    ├── /api/jobs          jrlib/http_facade.py
+    ├── /function/api_*    server.jac  →  jrlib/api.py
+    └── job pipeline       jrlib/pipeline.py
+            ├── sandbox    jrlib/sandbox.py
+            ├── discovery  jrlib/discover.py
+            ├── analysis   jrlib/analyze.py
+            ├── replay     jrlib/reproduce.py
+            └── graph      jac/investigate.jac + jac/repo_case.jac
 ```
 
-Detail, including what is deliberately not claimed, is in [docs/architecture.md](docs/architecture.md).
+Detail is in [docs/architecture.md](docs/architecture.md). The threat model is in [docs/threat-model.md](docs/threat-model.md). Legacy names are in [docs/legacy-names.md](docs/legacy-names.md).
 
-## Jac is the investigation runtime
+## JacHammer deployment
 
-Jac (`jaclang==0.16.7`) owns the parts that turn an execution log into a finding:
-
-| Module | Responsibility |
-| --- | --- |
-| `jac/schema.jac` | Validates `vectorrift.execution.v1`. Drops malformed lines and sanitizes event fields. |
-| `jac/novelty.jac` | Recomputes the behavioral fingerprint and decides whether a key is new. |
-| `jac/classify.jac` | Evidence ladder. An anomaly stays an anomaly until reproduction and minimization exist. |
-| `jac/hypotheses.jac` | Proposes a narrow cause and a skeptic that rejects broader claims. |
-| `jac/experiments.jac` | Builds the next inputs (note siblings, stretched length, overflowing scale). |
-| `jac/graph.jac` | Persists targets, inputs, executions, findings, and hypotheses. Walkers cluster, walk ancestry, and count support versus contradiction. |
-| `jac/corpus.jac` | Dedup and lineage: seed → mutation → interesting child. |
-| `jac/campaign.jac` | Schedules the native engine, ingests events, replays, minimizes, and publishes state plus the report. |
-| `jac/report.jac` | Human-readable report from measured fields. |
-| `jac/main.jac` | CLI entry. |
-
-Removing the Jac tree removes classification, the investigation graph, experiment scheduling, the report, and the state file the dashboard renders. The C engine can still execute one input. It cannot finish an investigation.
-
-`python3 scripts/language_ratio.py` prints the Jac share of meaningful lines in `jac/`, `native/`, and the dashboard application (generated shadcn primitives excluded). A count of this tree reported 2263 Jac lines of 4701 (48.1%). Re-run the script after edits; that figure is a measurement, not a constant in the product.
-
-## Native fuzzing bridge
-
-`native/` is a small C engine plus two targets, built with Clang 18:
-
-- `vrfuzz_riftpacket` — demo parser. Coverage instrumentation (`-fsanitize-coverage=trace-pc-guard`) is compiled into `riftpacket.c` only. The engine is built with AddressSanitizer and UndefinedBehaviorSanitizer, and it implements `__sanitizer_cov_trace_pc_guard`. The coverage bitmap is `MAP_SHARED`, so the parent reads edges the child wrote.
-- `vrfuzz_hostile` — isolation fixture (flood, hang, abort). Not a vulnerability demo.
-- `riftpacket_libfuzzer` — the same parser linked with `-fsanitize=fuzzer`. It is a second engine check. It does not feed the Jac pipeline, and it does not instrument Jac.
-
-libFuzzer is not claimed to guide coverage of Jac or Python. The campaign loop is `vrfuzz`.
-
-## Behavioral novelty
-
-Each target calls `vr_emit(kind, a, b)`. The engine fingerprints the event sequence. Jac recomputes the same fingerprint into a `BehaviorBook`. Coverage novelty (`new_edges`) and behavior novelty (`behavior_new`, new keys) are stored and drawn separately.
-
-The note opcode changes a label and no extra branch. A sibling note can show `new_edges == 0` and `behavior_new > 0` in one process via `compare`. A fresh `replay` resets the coverage map, so it is not a valid zero-edge comparison.
-
-## Agents
-
-Agents are deterministic Jac rules and walkers. No remote model is called.
-
-- Reproduction replays the stored input and records a match or a divergence.
-- Minimization asks the engine for a ddmin input and checks the signature still matches.
-- Hypothesis states a narrow cause. The skeptic contradicts “arbitrary code execution” on every confirmed record.
-- Next-experiment schedules a note sweep and, when the fuzzer has not already produced it, a scale-overflow input.
-- Cluster, evidence, and ancestry walkers group signatures, count support versus contradiction, and walk mutation parents.
-
-Agent prose does not raise a classification. `classify.jac` does, from replay, minimization, and the sanitizer class string.
-
-## Safety model
-
-- Targets run in a forked child. The parent enforces a wall-clock deadline, then `SIGKILL`.
-- The child sets `RLIMIT_CPU`, `RLIMIT_FSIZE`, and `RLIMIT_CORE`, closes extra fds, and `_exit`s. `RLIMIT_AS` is not set: AddressSanitizer’s shadow memory needs a large virtual address space. That limit is stated in the published limitations, not hidden.
-- Stderr is capped. After the cap, the parent keeps reading so a flood cannot stall the pipe.
-- Replay from the dashboard uses `spawn` with `shell: false` and an argv allowlist: only `vrfuzz_riftpacket` or `vrfuzz_hostile` under `native/build`, command `replay`, and an input path inside the repository.
-- Target text is treated as untrusted. The UI renders it as text. Findings that contain CVE-style tokens are refused at publish time.
-- Demonstrations use synthetic inputs. No network target is required.
-
-## Install
-
-Runtime used to develop this tree:
-
-- Ubuntu clang 18.1.3, `libclang-rt-18-dev`, `llvm-18` (`llvm-symbolizer` at `/usr/lib/llvm-18/bin/llvm-symbolizer`)
-- `libstdc++-14-dev` (libFuzzer link)
-- Python 3.12 and `jaclang==0.16.7` (`pip install --user -r requirements.txt`)
-- Node.js for the dashboard (`npm install` inside `dashboard/`)
+This environment serves Jac apps with `jac start`. There is no separate Next.js process in the product path.
 
 ```bash
 pip install --user -r requirements.txt
 export PATH="$HOME/.local/bin:$PATH"
-./scripts/build.sh
+jac install
+jac start main.jac --port 8000
 ```
 
-If `clang-18` is missing, the native build stops with CMake’s compiler error. Behavioral Jac unit tests that do not touch the binary still run. The dashboard will show an empty campaign until `scripts/demo.sh` can spawn `vrfuzz_riftpacket`. Sanitizer findings are not claimed when the binary was not built with the sanitizer flags in `native/CMakeLists.txt`.
+Open `http://127.0.0.1:8000/`. The page title is JacRift. `GET /healthz` is the process probe.
 
-## Demo
+`jaclang==0.16.7` does not dispatch `@restspec` custom paths. Job routes are installed onto the Jac request handler when `main.jac` loads:
+
+| Method | Path | Body |
+| --- | --- | --- |
+| POST | `/api/jobs` | `repository_url`, `authorization_confirmed`, `scope` |
+| GET | `/api/jobs` | |
+| GET | `/api/jobs/{id}` | job snapshot: stages, metrics, findings, graph, log, report |
+| GET | `/api/jobs/{id}/log` | |
+| GET | `/api/jobs/{id}/events` | |
+| GET | `/api/jobs/{id}/findings` | |
+| GET | `/api/jobs/{id}/report` | |
+| POST | `/api/jobs/{id}/reproduce` | `finding_id` |
+| DELETE | `/api/jobs/{id}` | cancel if running, delete if terminal |
+
+The same operations exist as `POST /function/api_create_job` and the other `api_*` functions. Responses there use Jac's envelope `{ok, data: {result}}`. `/api/jobs` returns the result object directly.
+
+A CLI without the server:
 
 ```bash
-export PATH="$HOME/.local/bin:$PATH"
-./scripts/demo.sh
-cd dashboard && npm install && npx next dev -p 43117 -H 0.0.0.0
+python3 -m jrlib.cli --repository fixture://safe-buggy
 ```
 
-Open the dashboard, read coverage and behavior as two series, open a confirmed finding, and use **Replay stored input**. The button re-executes the minimized artifact. The campaign report is `var/report.md`.
+## Sandbox
 
-Walkthrough: [docs/demo.md](docs/demo.md). Finding rules: [docs/findings.md](docs/findings.md).
+Submitted repositories are untrusted. This JacHammer environment has no Docker or Podman socket, so the execution backend is a disposable user namespace (`unshare --user --map-root-user --pid --fork --mount --mount-proc`), not a nested container. `ContainerSandboxBackend` fails closed when a container runtime is absent, and it stays disabled when one is present.
+
+- Clone (GitHub `https` only) may use the network. Execution does not (`--net`).
+- The fixture is copied from this tree. It is not fetched.
+- Commands are argv arrays. `shell=True` is not used.
+- The child environment is replaced: `PATH`, a job-local `HOME` and `TMPDIR`, `LANG=C`, `GIT_TERMINAL_PROMPT=0`, and `PYTHONPATH` pointed at the host user site so `jac` can import `jaclang`. Host secrets are not forwarded.
+- Credential directories and the Docker socket are hidden inside the mount namespace.
+- `read_artifact` rejects paths outside the job workspace.
+- Allowed programs are `jac`, `python3`, and `python`, and only from `/usr/bin`, `/bin`, or `~/.local/bin` when the path is absolute.
+- Limits: CPU time, file size, core dumps disabled, open files, process count, wall-clock timeout, and capped stdout/stderr. `RLIMIT_AS` is not set; Jac and CPython need a large virtual address space, and a tight address limit kills the interpreter before the target runs.
+- Process-count ceiling is above the current thread count. A limit below that cannot `fork`.
+- Logs are size-bounded and redacted (cloud key shapes, GitHub tokens, bearer tokens).
+
+`JACRIFT_SANDBOX` selects the backend name. The default is `jachammer`, which uses the same local namespace backend.
+
+## Repository discovery and analysis
+
+Discovery lists Jac files, tests, Python files, dependency manifests, and build files. It does not execute README commands or Makefiles. Those paths are recorded and skipped.
+
+Static analysis runs `jac check` per non-test Jac file. Tests run `jac test` when a `tests/` tree exists. Runtime runs `jac run` only for entrypoints that do not reference subprocess, sockets, `eval`, `exec`, ctypes, or a pty, and that are under 20KB. Bounded mutation edits JSON fields on those inputs (at most six variants). It does not target other hosts.
+
+Interesting failures are replayed five times. A failure is reproducible when there are at least three attempts and at least four of every five attempts match. JSON object keys are dropped, including the last key, while the failure signature holds. An empty object is kept when the program defaults still fail. A single `jac check` / `jac test` / `jac run` command is already one command; minimization records that as `diagnostic_command` and does not rewrite the source file. The finding limitations say so.
+
+## Evidence ladder
+
+Repository findings move through:
+
+```text
+OBSERVED
+→ ANOMALOUS
+→ REPRODUCIBLE_FAILURE
+→ MINIMIZED_FAILURE
+→ SUPPORTED_HYPOTHESIS
+→ CONFIRMED_DEFENSIVE_FINDING
+```
+
+`jac/repo_case.jac` is the gate. Confirmation needs a reproducible replay, a minimized trigger, a narrow supported hypothesis, a contradicted broad hypothesis, and a source location. Memory-safety and undefined-behavior labels without a sanitizer diagnostic are contradicted, not confirmed.
+
+The synthetic riftpacket campaign keeps its own ladder in `jac/classify.jac` (`NOVEL_BEHAVIOR` through `CONFIRMED_SECURITY_FINDING`). That ladder is for the local fuzzer fixture, not for repository jobs.
+
+## Demonstration fixture
+
+`fixtures/safe_buggy` is a **TEST / DEMONSTRATION FIXTURE**. It is excluded from the host `jac check` by `.jacignore`. Defects are harmless and local: a type mismatch, a syntax error, a missing import, a failing unit test, an index exception, a walker that reports `WALKER_FAILURE`, and an order graph that can enter `COMPLETE` before verification.
+
+Expected on a successful job: status `COMPLETE`, a confirmed `STATE_INVARIANT_FAILURE` on `checkout/order_graph.jac`, a minimized JSON input, a contradicted counter-check (`verified: true` removes the marker), and a report that says what remains unknown.
+
+The native targets under `native/` (`riftpacket`, `hostile`) are also **TEST / DEMONSTRATION FIXTURES** for the older campaign. They are not the repository-analysis product. The Next.js app in `dashboard/` is the board for that campaign only. Its page is labeled as such. Start it separately if you are inspecting `var/state.json`; it is not served by `jac start`.
 
 ## Tests
 
@@ -143,35 +193,37 @@ export PATH="$HOME/.local/bin:$PATH"
 ./scripts/test.sh
 ```
 
-That runs every `jac/*.jac` test file and `tests/test_*.py`. Engine tests skip if the binaries are absent. Invariant tests skip if `var/state.json` is absent. Dashboard API tests run when `VECTORRIFT_DASHBOARD_URL` is set (for example `http://127.0.0.1:43117`).
+That runs `jac test` on each file in `jac/` and `python3 -m unittest discover -s tests`. Engine tests skip when the native binaries are absent. Dashboard API tests run only when `VECTORRIFT_DASHBOARD_URL` is set.
+
+A fixture job without the UI:
+
+```bash
+python3 -m unittest tests.test_pipeline.PipelineTests.test_fixture_reaches_confirmed_finding
+```
 
 ## Layout
 
 ```text
-├── jac/            investigation runtime
-├── native/         engine, riftpacket, hostile fixture, libFuzzer entry
-├── dashboard/      Next.js board over var/state.json
-├── corpus/seeds/   deterministic riftpacket seeds
-├── tests/          Python checks against the binaries and published state
-├── scripts/        build, demo, seeds, tests, language share
-├── docs/           architecture, threat model, findings, demo, experiments
-└── var/            generated campaign output (gitignored)
+main.jac              jac start entry (API + UI)
+server.jac            Jac function endpoints
+components/           repository console
+jrlib/                jobs, sandbox, discovery, analysis, HTTP routes
+jac/                  investigation core, including repository cases
+fixtures/safe_buggy   labeled demonstration repository
+native/               synthetic fuzzer fixtures
+dashboard/            synthetic campaign board (not the product UI)
+corpus/seeds/         riftpacket seeds
+docs/                 architecture, threat model, demo, legacy names
+var/jobs/             generated job state (gitignored)
 ```
 
-## Limitations
+## Known limitations
 
-- One worker. A campaign does not run concurrent target executions.
-- Coverage is “N of M SanitizerCoverage guards” in the target translation unit, not a percentage of source lines.
-- Confirmed text names the sanitizer class and frame. It does not claim instruction-pointer control.
-- Minimization is ddmin capped at 400 executions. Some inputs do not get smaller.
-- The investigation graph stores an execution node per input. The board shows the neighborhood of the selected finding, not the full node list.
-- Jac graph files under `jac/.jac/` persist across runs. Campaigns call `reset_graph()` before ingesting.
-
-False-positive risks: a novel transition can be a legal protocol path; a sanitizer report can fire in a harness helper if the frame parser is wrong (the parser accepts `#` stack lines and `file.c:line` only); a timeout can be a slow input rather than a hang. Those records stay `NOVEL_BEHAVIOR`, `SUSPICIOUS_DIVERGENCE`, `CAPTURED`, or `TIMEOUT` until the evidence ladder moves them.
-
-## Future work
-
-- More than one worker, with a campaign lock that already rejects a second start.
-- MemorySanitizer on a fully instrumented libc, which this environment does not provide.
-- Jac Cloud / Jaseci deployment of the dashboard. Local `jac run` is the path that was executed. Unverified deploy commands are not documented as working.
-- A coverage-guided loop inside libFuzzer that also emits `vectorrift.execution.v1`. Today libFuzzer is a side binary.
+- Isolation is a user namespace on this host, not a separate VM or container image. A kernel that allows user namespaces is required. `unshare` must exist.
+- GitHub cloning is implemented and separated from the network-off execution phase. A live clone of an arbitrary third-party repository was not part of the automated fixture test.
+- Build scripts inside a submitted repository are not run. Projects that need a custom build before `jac check` will report that skip, not a guessed shell command.
+- Diagnostic commands are treated as already-minimal triggers. Byte-level minimization applies to JSON inputs.
+- The investigation graph view is a selectable node list with the edges between them, not a force-directed canvas.
+- One analysis job runs its tools sequentially. The server can hold more than one job directory; tool runs are not a distributed queue.
+- `RLIMIT_NPROC` is per user id and counts threads. The ceiling is loose on purpose.
+- The synthetic campaign's `vectorrift.state.v1` file and `vrfuzz_*` binary names are unchanged. See [docs/legacy-names.md](docs/legacy-names.md).

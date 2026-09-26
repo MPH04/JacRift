@@ -1,0 +1,7 @@
+fixtures/
+dashboard/
+native/
+corpus/
+var/
+node_modules/
+**/.jac/

@@ -12,10 +12,12 @@ __pycache__/
 *.pyc
 .venv/
 
-# Dashboard
+# Dashboard and Jac client toolchain
 dashboard/node_modules/
 dashboard/.next/
 dashboard/out/
+node_modules/
+.jac/
 
 # OS / editor
 .DS_Store

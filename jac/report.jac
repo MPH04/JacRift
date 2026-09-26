@@ -39,7 +39,9 @@ def render_report(state: dict) -> str {
     campaign = state["campaign"];
     metrics = state["metrics"];
     lines = [];
-    lines.append("# VectorRift report");
+    lines.append("# JacRift report");
+    lines.append("");
+    lines.append("Synthetic campaign fixture (riftpacket). This report is not a repository-analysis job.");
     lines.append("");
     lines.append(f"Target `{campaign['target_id']}` version `{campaign['target_version']}`.");
     lines.append(f"Compiler `{campaign.get('compiler', '')}`. Coverage mode `{campaign.get('coverage', '')}`.");

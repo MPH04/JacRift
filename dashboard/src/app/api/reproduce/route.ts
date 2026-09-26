@@ -34,7 +34,7 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const findingId = String(body.finding_id ?? "");
   if (!/^f-[a-f0-9]{8,64}$/.test(findingId)) {
-    return NextResponse.json({ error: "finding_id is not a VectorRift id" }, { status: 400 });
+    return NextResponse.json({ error: "finding_id is not a campaign finding id" }, { status: 400 });
   }
   const raw = fs.readFileSync(statePath(), "utf8");
   const state = JSON.parse(raw);
