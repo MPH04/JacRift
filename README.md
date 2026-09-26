@@ -132,7 +132,7 @@ export PATH="$HOME/.local/bin:$PATH"
 cd dashboard && npm install && npx next dev -p 43117 -H 0.0.0.0
 ```
 
-Open the dashboard, read coverage and behavior as two series, open a confirmed finding, and use **Replay stored input**. The button re-executes the minimized artifact. The campaign report is `var/report.md`.
+Open the dashboard and press **Run demo**. That starts the same riftpacket budget as `scripts/demo.sh` (80 executions, seed 1, 300 ms). Read coverage and behavior as two series, open a confirmed finding, and use **Replay stored input**. The button re-executes the minimized artifact. The campaign report is `var/report.md`, also shown on the page.
 
 Walkthrough: [docs/demo.md](docs/demo.md). Finding rules: [docs/findings.md](docs/findings.md).
 

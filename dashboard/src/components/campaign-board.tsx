@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { campaignBudget, DemoConsole, type DemoStep } from "@/components/demo-console";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -71,6 +72,8 @@ export function CampaignBoard() {
   const [loadError, setLoadError] = useState("");
   const [selected, setSelected] = useState("");
   const [busy, setBusy] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [detailTab, setDetailTab] = useState("evidence");
   const [replay, setReplay] = useState<string>("");
 
   async function refresh() {
@@ -117,20 +120,40 @@ export function CampaignBoard() {
     );
   }, [current, state.graph]);
   const status = state.campaign?.status ?? "idle";
+  const running = status === "running" || status === "triaging";
 
-  async function start(execs: number) {
+  useEffect(() => {
+    if (running || status === "complete" || status === "error") setStarting(false);
+  }, [running, status]);
+
+  function openSection(id: string, tab?: string) {
+    if (tab) setDetailTab(tab);
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  async function start(profile: "demo" | "campaign") {
     setBusy(true);
+    setStarting(true);
     setReplay("");
+    setLoadError("");
     try {
+      const payload =
+        profile === "demo"
+          ? { profile: "demo" }
+          : { profile: "campaign", execs: 120, seed: 1, timeout_ms: 250 };
       const response = await fetch("/api/campaign", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ execs, seed: 1 }),
+        body: JSON.stringify(payload),
       });
       const body = await response.json();
-      if (!response.ok) setLoadError(body.error ?? "Campaign did not start.");
+      if (!response.ok) {
+        setLoadError(body.error ?? "Campaign did not start.");
+        setStarting(false);
+      }
     } catch {
       setLoadError("Campaign request failed.");
+      setStarting(false);
     } finally {
       setBusy(false);
       void refresh();
@@ -159,6 +182,74 @@ export function CampaignBoard() {
 
   const edges = state.metrics?.edges_hit ?? 0;
   const guards = state.metrics?.instrumented_edges ?? 0;
+  const findingsReady = findings.length > 0;
+  const steps: DemoStep[] = [
+    {
+      id: "series",
+      label: "Coverage and behavior",
+      hint: "Two series, counted separately.",
+      ready: (state.series?.length ?? 0) >= 2,
+      onOpen: () => openSection("series"),
+    },
+    {
+      id: "checks",
+      label: "Measured checks",
+      hint: "Badges flip from the campaign file.",
+      ready: Object.keys(state.checks ?? {}).length > 0,
+      onOpen: () => openSection("checks"),
+    },
+    {
+      id: "findings",
+      label: "Findings",
+      hint: "Classification is the badge.",
+      ready: findingsReady,
+      onOpen: () => openSection("findings"),
+    },
+    {
+      id: "evidence",
+      label: "Evidence",
+      hint: "Claim, minimized input, replay.",
+      ready: findings.some((finding) => (finding.replay_argv?.length ?? 0) > 0),
+      onOpen: () => openSection("investigation", "evidence"),
+    },
+    {
+      id: "hypotheses",
+      label: "Hypotheses",
+      hint: "Supported and contradicted rows.",
+      ready: findings.some((finding) =>
+        (finding.hypotheses ?? []).some((item) => item.status === "supported" || item.status === "contradicted"),
+      ),
+      onOpen: () => openSection("investigation", "hypotheses"),
+    },
+    {
+      id: "lineage",
+      label: "Lineage",
+      hint: "Corpus ancestry for the input.",
+      ready: (state.corpus ?? []).some((row) => (row.lineage?.length ?? 0) > 0),
+      onOpen: () => openSection("investigation", "lineage"),
+    },
+    {
+      id: "graph",
+      label: "Graph",
+      hint: "Edges that touch the finding.",
+      ready: (state.graph?.edges?.length ?? 0) > 0,
+      onOpen: () => openSection("investigation", "graph"),
+    },
+    {
+      id: "experiments",
+      label: "Experiments",
+      hint: "Note sweep and scheduled inputs.",
+      ready: (state.experiments ?? []).length > 0,
+      onOpen: () => openSection("experiments"),
+    },
+    {
+      id: "limitations",
+      label: "Limitations",
+      hint: "Published with the campaign.",
+      ready: (state.limitations ?? []).length > 0,
+      onOpen: () => openSection("limitations"),
+    },
+  ];
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-6 md:px-8">
@@ -175,9 +266,12 @@ export function CampaignBoard() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="outline">{state.campaign?.target_id ?? "riftpacket"}</Badge>
-          <Badge variant="outline">{status}</Badge>
-          <Button disabled={busy || status === "running"} onClick={() => start(120)}>
-            {status === "running" ? "Campaign running" : "Run local campaign"}
+          <Badge variant="outline">{starting && !running ? "starting" : status}</Badge>
+          <Button disabled={busy || running || starting} onClick={() => start("demo")}>
+            {running || starting ? "Campaign running" : "Run demo"}
+          </Button>
+          <Button variant="outline" disabled={busy || running || starting} onClick={() => start("campaign")}>
+            120 executions
           </Button>
         </div>
       </header>
@@ -190,14 +284,22 @@ export function CampaignBoard() {
       {state.campaign?.error ? (
         <p className="rounded-md border border-[#9f1239]/40 bg-[#9f1239]/5 px-3 py-2 text-sm">{state.campaign.error}</p>
       ) : null}
-      {status === "idle" ? (
+      {status === "idle" && !starting ? (
         <p className="text-sm text-[#5c564c]">
-          No campaign has been published yet. The button runs the instrumented riftpacket target on this machine.
+          No campaign has been published yet. Run demo executes the instrumented riftpacket target on this machine.
           Scope: {state.campaign?.authorized_scope ?? "local synthetic targets in this repository"}.
         </p>
       ) : null}
 
-      <section className="grid gap-4 md:grid-cols-2">
+      <DemoConsole
+        status={starting && status === "idle" ? "starting" : status}
+        executions={state.metrics?.executions}
+        budget={campaignBudget(state.campaign?.id)}
+        starting={starting}
+        steps={steps}
+      />
+
+      <section id="series" className="grid scroll-mt-6 gap-4 md:grid-cols-2">
         <Card className="border-[#e0d3bc] bg-[#faf7f2] shadow-none">
           <CardHeader>
             <CardTitle className="text-sm font-medium tracking-wide text-[#b45309]">Coverage novelty</CardTitle>
@@ -240,7 +342,7 @@ export function CampaignBoard() {
         ))}
       </section>
 
-      <section className="flex flex-wrap gap-2 text-xs">
+      <section id="checks" className="flex scroll-mt-6 flex-wrap gap-2 text-xs">
         {Object.entries(state.checks ?? {}).map(([name, ok]) => (
           <Badge key={name} variant="outline" className={ok ? "border-[#0f6e6b] text-[#0f6e6b]" : ""}>
             {name.replaceAll("_", " ")}: {ok ? "measured" : "not shown"}
@@ -250,7 +352,7 @@ export function CampaignBoard() {
 
       <Separator />
 
-      <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
+      <div id="findings" className="grid scroll-mt-6 gap-4 lg:grid-cols-[280px_1fr]">
         <Card className="shadow-none">
           <CardHeader>
             <CardTitle className="text-base">Findings</CardTitle>
@@ -286,7 +388,7 @@ export function CampaignBoard() {
           </CardContent>
         </Card>
 
-        <Card className="shadow-none">
+        <Card id="investigation" className="scroll-mt-6 shadow-none">
           <CardHeader>
             <CardTitle className="text-base">Investigation</CardTitle>
           </CardHeader>
@@ -294,7 +396,7 @@ export function CampaignBoard() {
             {!current ? (
               <p className="text-sm text-[#5c564c]">Select a finding.</p>
             ) : (
-              <Tabs defaultValue="evidence">
+              <Tabs value={detailTab} onValueChange={(value) => setDetailTab(String(value))}>
                 <TabsList>
                   <TabsTrigger value="evidence">Evidence</TabsTrigger>
                   <TabsTrigger value="hypotheses">Hypotheses</TabsTrigger>
@@ -390,7 +492,7 @@ export function CampaignBoard() {
         </Card>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div id="experiments" className="grid scroll-mt-6 gap-4 md:grid-cols-2">
         <Card className="shadow-none">
           <CardHeader>
             <CardTitle className="text-base">Experiments</CardTitle>
@@ -427,7 +529,7 @@ export function CampaignBoard() {
         </Card>
       </div>
 
-      <footer className="space-y-2 pb-8 text-xs text-[#5c564c]">
+      <footer id="limitations" className="scroll-mt-6 space-y-2 pb-8 text-xs text-[#5c564c]">
         <p>
           Compiler {state.campaign?.compiler || "—"} · seed {state.campaign?.seed ?? "—"} · generated{" "}
           {state.generated_at || "—"} · timeouts {formatNum(state.metrics?.timeouts)} · crashes{" "}

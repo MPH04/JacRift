@@ -30,7 +30,7 @@ npm install
 npx next dev -p 43117 -H 0.0.0.0
 ```
 
-The board polls `GET /api/state` once a second.
+The board polls `GET /api/state` once a second. **Run demo** posts `{"profile":"demo"}`, which the server pins to `--execs 80 --seed 1 --timeout-ms 300` (the same budget as `scripts/demo.sh`). **120 executions** posts `{"profile":"campaign","execs":120,"seed":1,"timeout_ms":250}`. The campaign log is `var/campaign.log`, shown on the page. The walkthrough buttons scroll to each section once that section has data.
 
 What to look at, in order:
 
