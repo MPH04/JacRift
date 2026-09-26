@@ -1,0 +1,25 @@
+# Campaign output, lock files, and generated reports
+/var/
+
+# Native build tree
+/native/build/
+
+# Jac bytecode and persisted graph database
+**/.jac/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Dashboard
+dashboard/node_modules/
+dashboard/.next/
+dashboard/out/
+
+# OS / editor
+.DS_Store
+*.tsbuildinfo
+
+# Local research scratch
+/agent-tools/
