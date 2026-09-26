@@ -1,6 +1,6 @@
 # VectorRift dashboard
 
-Next.js board for a campaign published by the Jac runtime. It reads `../var/state.json` and can start `jac run` or an allowlisted replay. It does not classify findings.
+Next.js board for a campaign published by the Jac runtime. It reads `../var/state.json`, starts the recorded demo (`POST /api/campaign` with `{"profile":"demo"}`), and can start an allowlisted replay. It does not classify findings.
 
 ```bash
 npm install

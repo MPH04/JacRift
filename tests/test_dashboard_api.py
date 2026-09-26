@@ -55,6 +55,30 @@ class DashboardApiTests(unittest.TestCase):
         status, _body = request("POST", "/api/reproduce", {"finding_id": "f-../../etc/passwd"})
         self.assertEqual(status, 400)
 
+    def test_campaign_rejects_an_unknown_profile(self):
+        status, body = request("POST", "/api/campaign", {"profile": "shell"})
+        self.assertEqual(status, 400)
+        self.assertIn("profile", body.get("error", ""))
+
+    def test_campaign_rejects_a_zero_timeout(self):
+        status, body = request("POST", "/api/campaign", {"execs": 80, "seed": 1, "timeout_ms": 0})
+        self.assertEqual(status, 400)
+        self.assertIn("timeout_ms", body.get("error", ""))
+
+    def test_ready_reports_local_tools(self):
+        status, body = request("GET", "/api/ready")
+        self.assertEqual(status, 200)
+        self.assertIsInstance(body.get("jac"), bool)
+        self.assertIsInstance(body.get("binary"), bool)
+
+    def test_log_and_report_are_text_payloads(self):
+        log_status, log_body = request("GET", "/api/log")
+        self.assertEqual(log_status, 200)
+        self.assertIsInstance(log_body.get("tail"), str)
+        report_status, report_body = request("GET", "/api/report")
+        self.assertEqual(report_status, 200)
+        self.assertIsInstance(report_body.get("report"), str)
+
 
 if __name__ == "__main__":
     unittest.main()
