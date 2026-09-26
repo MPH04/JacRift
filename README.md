@@ -2,7 +2,13 @@
 
 JacRift is a defensive investigation platform for authorized Jac repositories.
 
-Detecting something abnormal is not the same as proving what happened. JacRift records the observation, tries to reproduce it, reduces the trigger when it can, and only then states what the evidence supports and what is still unknown.
+## Vision
+
+The question JacRift is built to answer:
+
+> Given an authorized Jac repository, can we safely analyze it, detect meaningful failures, reproduce them, determine what evidence supports them, and present a defensible explanation to a developer?
+
+Detecting something abnormal is not the same as proving what happened. The product is not a path from a repository, through a model, to a vulnerability label. It is a path from a controlled observation to an explanation a developer can inspect.
 
 ```text
 Repository
@@ -23,6 +29,42 @@ Counter-evidence
         ↓
 Defensible finding
 ```
+
+The philosophy is **Observation → Evidence → Reproduction → Explanation**. A weak observation stays a weak observation until the evidence earns a stronger claim.
+
+A result should not read:
+
+```text
+Possible vulnerability found.
+```
+
+It should try to read:
+
+```text
+Something unusual happened.
+We reproduced it.
+We reduced it to a smaller trigger.
+We identified the relevant source location.
+We constructed a narrow hypothesis.
+We tested supporting and contradictory evidence.
+Here is what the evidence supports.
+Here is what remains unknown.
+```
+
+Every finding is expected to answer: what happened, where, whether it repeats, what triggers it, what supports the explanation, what contradicts it, and what is still unknown. Findings become stronger only as evidence accumulates:
+
+```text
+OBSERVED
+→ ANOMALOUS
+→ REPRODUCIBLE_FAILURE
+→ MINIMIZED_FAILURE
+→ SUPPORTED_HYPOTHESIS
+→ CONFIRMED_DEFENSIVE_FINDING
+```
+
+A confirmed finding needs repeatable behavior, a minimal trigger, a source location, a narrow hypothesis the evidence supports, and a record of what would make that explanation wrong. JacRift does not jump from an observation to a confirmed finding, and it does not invent exploitability. Remote code execution, account takeover, and complete compromise are not default conclusions.
+
+The differentiator is the evidence that turns a strange behavior into an explainable, reproducible finding.
 
 ## What JacRift does
 
